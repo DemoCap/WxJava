@@ -104,7 +104,7 @@ public class RedisTemplateSimpleDistributedLock implements Lock {
       // 提示: 必须指定returnType, 类型: 此处必须为Long, 不能是Integer
       RedisScript<String> script = new DefaultRedisScript("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", Long.class);
       //删除锁时，指定key,value序列化方式
-      this.redisTemplate.execute(script,RedisSerializer.string(), RedisSerializer.string(),Collections.singletonList(this.key), new Object[]{this.valueThreadLocal.get()});
+      this.redisTemplate.execute(script,RedisSerializer.string(), RedisSerializer.string(),Arrays.asList(this.key), new Object[]{this.valueThreadLocal.get()});
       valueThreadLocal.remove();
     }
   }
