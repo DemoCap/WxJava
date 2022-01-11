@@ -9,6 +9,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.data.redis.core.types.Expiration;
+import org.springframework.data.redis.serializer.RedisSerializer;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -74,11 +75,12 @@ public class RedisTemplateSimpleDistributedLock implements Lock {
     }
     final byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
     final byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
+    //通过第二个参数指定返回结果序列化方式,防止StringRedisTemplate指定的valueSerializer非StringRedisSerializer时异常
     List<Object> redisResults = redisTemplate.executePipelined((RedisCallback<String>) connection -> {
       connection.set(keyBytes, valueBytes, Expiration.milliseconds(leaseMilliseconds), RedisStringCommands.SetOption.SET_IF_ABSENT);
       connection.get(keyBytes);
       return null;
-    });
+    },RedisSerializer.string());
     Object currentLockSecret = redisResults.size() > 1 ? redisResults.get(1) : redisResults.get(0);
     return currentLockSecret != null && currentLockSecret.toString().equals(value);
   }
@@ -100,8 +102,9 @@ public class RedisTemplateSimpleDistributedLock implements Lock {
   public void unlock() {
     if (valueThreadLocal.get() != null) {
       // 提示: 必须指定returnType, 类型: 此处必须为Long, 不能是Integer
-      RedisScript<Long> script = new DefaultRedisScript("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", Long.class);
-      redisTemplate.execute(script, Arrays.asList(key), valueThreadLocal.get());
+      RedisScript<String> script = new DefaultRedisScript("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", Long.class);
+      //删除锁时，指定key,value序列化方式
+      this.redisTemplate.execute(script,RedisSerializer.string(), RedisSerializer.string(),Collections.singletonList(this.key), new Object[]{this.valueThreadLocal.get()});
       valueThreadLocal.remove();
     }
   }
